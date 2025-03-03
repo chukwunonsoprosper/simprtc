@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TechMate Voice Chat - Two Users</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      background-color: #f4f4f4;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      color: #73c73b;
+    }
+
+    .status {
+      margin-bottom: 15px;
+      font-size: 1rem;
+      color: #555;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    #startCall {
+      background-color: #73c73b;
+      color: #fff;
+    }
+
+    #startCall:hover {
+      background-color: #5fa32f;
+    }
+
+    #endCall {
+      background-color: #e63946;
+      color: #fff;
+    }
+
+    #endCall:hover {
+      background-color: #cc2e3a;
+    }
+
+    .audio-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    audio {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 1.4rem;
+      }
+
+      .controls {
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .audio-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TechMate Voice Chat</h1>
+    <div class="status" id="status">Waiting to connect...</div>
+    <div class="controls">
+      <button id="startCall">Start Call</button>
+      <button id="endCall" disabled>End Call</button>
+    </div>
+    <div class="audio-container">
+      <div>
+        <p>Your Audio</p>
+        <audio id="localAudio" autoplay muted></audio>
+      </div>
+      <div>
+        <p>Remote Audio</p>
+        <audio id="remoteAudio" autoplay></audio>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // WebRTC variables
+    let localStream;
+    let peerConnection;
+    const configuration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }, // Free STUN server
+        // Add TURN server for production if needed
+      ]
+    };
+
+    // DOM elements
+    const startCallButton = document.getElementById('startCall');
+    const endCallButton = document.getElementById('endCall');
+    const localAudio = document.getElementById('localAudio');
+    const remoteAudio = document.getElementById('remoteAudio');
+    const status = document.getElementById('status');
+
+    // WebSocket connection to signaling server
+    const socket = new WebSocket('ws://localhost:8080');
+
+    socket.onopen = () => {
+      status.textContent = 'Connected to server. Waiting for another user...';
+    };
+
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      if (data.offer) {
+        await handleOffer(data.offer);
+      } else if (data.answer) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        status.textContent = 'Connected! Talking...';
+      } else if (data.candidate) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    };
+
+    // Handle incoming offer
+    async function handleOffer(offer) {
+      peerConnection = new RTCPeerConnection(configuration);
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localAudio.srcObject = localStream;
+
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      peerConnection.ontrack = (event) => {
+        remoteAudio.srcObject = event.streams[0];
+        status.textContent = 'Connected! Talking...';
+      };
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.send(JSON.stringify({ candidate: event.candidate }));
+        }
+      };
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.send(JSON.stringify({ answer }));
+    }
+
+    // Start call function (initiates the offer)
+    async function startCall() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localAudio.srcObject = localStream;
+
+        peerConnection = new RTCPeerConnection(configuration);
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        peerConnection.ontrack = (event) => {
+          remoteAudio.srcObject = event.streams[0];
+          status.textContent = 'Connected! Talking...';
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.send(JSON.stringify({ candidate: event.candidate }));
+          }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.send(JSON.stringify({ offer }));
+
+        startCallButton.disabled = true;
+        endCallButton.disabled = false;
+        status.textContent = 'Calling... Waiting for response...';
+      } catch (error) {
+        console.error('Error starting call:', error);
+        alert('Failed to start call. Please allow microphone access.');
+      }
+    }
+
+    // End call function
+    function endCall() {
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      localAudio.srcObject = null;
+      remoteAudio.srcObject = null;
+
+      startCallButton.disabled = false;
+      endCallButton.disabled = true;
+      status.textContent = 'Call ended. Waiting to connect...';
+      socket.send(JSON.stringify({ end: true })); // Notify other peer
+    }
+
+    // Event listeners
+    startCallButton.addEventListener('click', startCall);
+    endCallButton.addEventListener('click', endCall);
+
+    // Handle server closure or reconnection
+    socket.onclose = () => {
+      status.textContent = 'Disconnected from server.';
+      endCall();
+    };
+  </script>
+</body>
+</html>
