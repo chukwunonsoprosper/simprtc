@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rtc test</title>
+  <title>TechMate Video Chat - Two Users</title>
   <style>
     * {
       margin: 0;
@@ -28,7 +28,7 @@
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
       padding: 20px;
       width: 100%;
-      max-width: 600px;
+      max-width: 800px;
       text-align: center;
     }
 
@@ -78,19 +78,21 @@
       background-color: #cc2e3a;
     }
 
-    .audio-container {
+    .video-container {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
       margin-top: 20px;
     }
 
-    audio {
+    video {
       width: 100%;
       max-width: 100%;
+      border-radius: 5px;
+      background: #000;
     }
 
-    @media (max-width: 480px) {
+    @media (max-width: 600px) {
       h1 {
         font-size: 1.4rem;
       }
@@ -104,7 +106,7 @@
         width: 100%;
       }
 
-      .audio-container {
+      .video-container {
         grid-template-columns: 1fr;
       }
     }
@@ -112,20 +114,20 @@
 </head>
 <body>
   <div class="container">
-    <h1>rtc test-  Voice Chat</h1>
+    <h1>TechMate Video Chat</h1>
     <div class="status" id="status">Waiting to connect...</div>
     <div class="controls">
-      <button id="startCall">Start Call</button>
+      <button id="startCall">Start Video Call</button>
       <button id="endCall" disabled>End Call</button>
     </div>
-    <div class="audio-container">
+    <div class="video-container">
       <div>
-        <p>Your Audio</p>
-        <audio id="localAudio" autoplay muted></audio>
+        <p>Your Video</p>
+        <video id="localVideo" autoplay muted playsinline></video>
       </div>
       <div>
-        <p>Remote Audio</p>
-        <audio id="remoteAudio" autoplay></audio>
+        <p>Remote Video</p>
+        <video id="remoteVideo" autoplay playsinline></video>
       </div>
     </div>
   </div>
@@ -144,8 +146,8 @@
     // DOM elements
     const startCallButton = document.getElementById('startCall');
     const endCallButton = document.getElementById('endCall');
-    const localAudio = document.getElementById('localAudio');
-    const remoteAudio = document.getElementById('remoteAudio');
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
     const status = document.getElementById('status');
 
     // WebSocket connection to signaling server
@@ -161,7 +163,7 @@
         await handleOffer(data.offer);
       } else if (data.answer) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        status.textContent = 'Connected! Talking...';
+        status.textContent = 'Connected! Video call active...';
       } else if (data.candidate) {
         await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
       }
@@ -170,13 +172,13 @@
     // Handle incoming offer
     async function handleOffer(offer) {
       peerConnection = new RTCPeerConnection(configuration);
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localAudio.srcObject = localStream;
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideo.srcObject = localStream;
 
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
       peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
-        status.textContent = 'Connected! Talking...';
+        remoteVideo.srcObject = event.streams[0];
+        status.textContent = 'Connected! Video call active...';
       };
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
@@ -193,15 +195,15 @@
     // Start call function (initiates the offer)
     async function startCall() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localAudio.srcObject = localStream;
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
 
         peerConnection = new RTCPeerConnection(configuration);
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
         peerConnection.ontrack = (event) => {
-          remoteAudio.srcObject = event.streams[0];
-          status.textContent = 'Connected! Talking...';
+          remoteVideo.srcObject = event.streams[0];
+          status.textContent = 'Connected! Video call active...';
         };
 
         peerConnection.onicecandidate = (event) => {
@@ -219,7 +221,7 @@
         status.textContent = 'Calling... Waiting for response...';
       } catch (error) {
         console.error('Error starting call:', error);
-        alert('Failed to start call. Please allow microphone access.');
+        alert('Failed to start call. Please allow camera and microphone access.');
       }
     }
 
@@ -233,8 +235,8 @@
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
       }
-      localAudio.srcObject = null;
-      remoteAudio.srcObject = null;
+      localVideo.srcObject = null;
+      remoteVideo.srcObject = null;
 
       startCallButton.disabled = false;
       endCallButton.disabled = true;
